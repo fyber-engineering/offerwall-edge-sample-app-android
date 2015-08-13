@@ -11,6 +11,7 @@ import android.graphics.LightingColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
+import android.view.animation.Animation;
 import android.widget.Button;
 
 import com.fyber.ads.AdFormat;
@@ -27,6 +28,7 @@ public abstract class FyberFragment extends Fragment implements RequestCallback 
 	protected static final int REWARDED_VIDEO_REQUEST_CODE = 8796;
 
 	private boolean isRequestingState;
+	private boolean isReadyToShowAd;
 	protected Intent intent;
 
 	@Override
@@ -41,6 +43,8 @@ public abstract class FyberFragment extends Fragment implements RequestCallback 
 		//resetting button and Intent
 		setButtonToOriginalState();
 		resetIntent();
+		isReadyToShowAd = false;
+		((MainActivity) getActivity()).getViewPagerAdapter().notifyDataSetChanged();
 	}
 
 	/*
@@ -83,19 +87,24 @@ public abstract class FyberFragment extends Fragment implements RequestCallback 
 
 	@Override
 	public void onAdAvailable(Intent intent) {
-		resetRequestingState();
+		isReadyToShowAd = true;
+		((MainActivity) getActivity()).getViewPagerAdapter().notifyDataSetChanged();
 		this.intent = intent;
+
 		//if you are using a general purpose requestCallback like this you might want to verify which adFormat will this Intent show.
 		//You can use the AdFormat class to obtain an AdFormat from a given Intent. Then you can perform ad format specific actions e.g.:
 		AdFormat adFormat = AdFormat.fromIntent(intent);
 		switch (adFormat) {
 			case OFFER_WALL:
 				//in our sample app, we want to show the offer wall in a single step.
+				resetRequestingState();
 				startActivityForResult(intent, OFFERWALL_REQUEST_CODE);
 				break;
 			default:
 				//we only animate the button if it is not an Offer Wall Intent.
-				getButton().startAnimation(MainActivity.getCounterclockwiseAnimation());
+				Animation counterclockwiseAnimation = MainActivity.getCounterclockwiseAnimation();
+				counterclockwiseAnimation.setAnimationListener(new CounterclockwiseButtonAnimationListener(true));
+				getButton().startAnimation(counterclockwiseAnimation);
 				setButtonToSuccessState();
 				break;
 		}
@@ -104,16 +113,12 @@ public abstract class FyberFragment extends Fragment implements RequestCallback 
 	@Override
 	public void onAdNotAvailable(AdFormat adFormat) {
 		FyberLogger.d(getLogTag(), "No ad available");
-		resetRequestingState();
-		resetIntent();
 		resetButtonStateWithAnimation();
 	}
 
 	@Override
 	public void onRequestError(RequestError requestError) {
-		FyberLogger.d(getLogTag(), "Semething went wrong with the request: " + requestError.getDescription());
-		resetRequestingState();
-		resetIntent();
+		FyberLogger.d(getLogTag(), "Something went wrong with the request: " + requestError.getDescription());
 		resetButtonStateWithAnimation();
 	}
 
@@ -137,13 +142,75 @@ public abstract class FyberFragment extends Fragment implements RequestCallback 
 		return isRequestingState;
 	}
 
+	public boolean isReadyToShowAd() {
+		return isReadyToShowAd;
+	}
+
 	/*
 	* ** UI state helper methods **
 	*/
 
 	private void resetButtonStateWithAnimation() {
-		getButton().startAnimation(MainActivity.getCounterclockwiseAnimation());
-		getButton().setText(getRequestText());
+
+		final Animation counterclockwiseAnimation = MainActivity.getCounterclockwiseAnimation();
+		counterclockwiseAnimation.setAnimationListener(new CounterclockwiseButtonAnimationListener(false));
+		Animation buttonAnimation = getButton().getAnimation();
+
+		// to avoid overlapping animations we make sure that no animation is running before animating the button.
+		if (buttonAnimation != null && !buttonAnimation.hasEnded()) {
+			buttonAnimation.setAnimationListener(new Animation.AnimationListener() {
+				@Override
+				public void onAnimationStart(Animation animation) {
+
+				}
+
+				@Override
+				public void onAnimationEnd(Animation animation) {
+					counterclockwiseAnimation.setStartOffset(200);
+					animateButtonCounterclockwise(counterclockwiseAnimation);
+				}
+
+				@Override
+				public void onAnimationRepeat(Animation animation) {
+
+				}
+			});
+		} else {
+			animateButtonCounterclockwise(counterclockwiseAnimation);
+		}
+	}
+
+	private void animateButtonCounterclockwise(Animation counterclockwiseAnimation) {
+		getButton().startAnimation(counterclockwiseAnimation);
+	}
+
+	// Custom animation listener that ensures button actions are only allowed after animations have finished
+	private class CounterclockwiseButtonAnimationListener implements Animation.AnimationListener {
+
+		private boolean isAdAvailable;
+
+		public CounterclockwiseButtonAnimationListener(boolean isAnimationToSuccess) {
+			this.isAdAvailable = isAnimationToSuccess;
+		}
+
+		@Override
+		public void onAnimationStart(Animation animation) {
+
+		}
+
+		@Override
+		public void onAnimationEnd(Animation animation) {
+			resetRequestingState();
+			if (!isAdAvailable) {
+				setButtonToOriginalState();
+				resetIntent();
+			}
+		}
+
+		@Override
+		public void onAnimationRepeat(Animation animation) {
+
+		}
 	}
 
 	protected void setButtonToRequestingMode() {
@@ -153,7 +220,7 @@ public abstract class FyberFragment extends Fragment implements RequestCallback 
 	}
 
 	protected void setButtonToSuccessState() {
-		setButtonColorAndText(getButton(), getShowText(), getResources().getColor(R.color.buttonColorSuccess));
+		setButtonColorAndText(getButton(), getShowText(), getResources().getColor(R.color.colorAdAvailable));
 	}
 
 	protected void setButtonToOriginalState() {

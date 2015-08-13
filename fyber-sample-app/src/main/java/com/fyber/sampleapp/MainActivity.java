@@ -1,5 +1,7 @@
 package com.fyber.sampleapp;
 
+import android.graphics.ColorFilter;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
@@ -7,6 +9,7 @@ import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentPagerAdapter;
+import android.support.v4.view.PagerTabStrip;
 import android.support.v4.view.ViewPager;
 import android.support.v7.widget.Toolbar;
 import android.text.Spannable;
@@ -20,6 +23,7 @@ import android.view.animation.AnimationSet;
 import android.view.animation.RotateAnimation;
 
 import com.fyber.Fyber;
+import com.fyber.sampleapp.fragments.FyberFragment;
 import com.fyber.sampleapp.fragments.InterstitialFragment;
 import com.fyber.sampleapp.fragments.OfferwallFragment;
 import com.fyber.sampleapp.fragments.RewardedVideoFragment;
@@ -82,6 +86,8 @@ public class MainActivity extends FragmentActivity {
 
 		setupViewPager();
 		setupToolbar();
+		setupTabStrip();
+
 	}
 
 	@Override
@@ -134,6 +140,31 @@ public class MainActivity extends FragmentActivity {
 //		FyberSdkExtraFeatures.createRequesterFromAnotherRequester(this);
 //	}
 
+	// ** Init helper functions **
+
+	private void setupViewPager() {
+		// Create the adapter that will return a fragment for each of the three
+		// primary sections of the Activity.
+		mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
+		// Set up the ViewPager with the sections adapter.
+		mViewPager = (ViewPager) findViewById(R.id.pager);
+		mViewPager.setAdapter(mSectionsPagerAdapter);
+		mViewPager.setCurrentItem(1);
+	}
+
+	private void setupToolbar() {
+		toolbar.setTitle(getString(R.string.fyber_header));
+		toolbar.setLogo(R.drawable.ic_launcher);
+	}
+
+	private void setupTabStrip() {
+		// Get PagerTabStrip
+		PagerTabStrip strip = PagerTabStrip.class.cast(findViewById(R.id.pager_header));
+		strip.setDrawFullUnderline(true);
+		strip.setBackgroundColor(getResources().getColor(R.color.textColorPrimary));
+		strip.setTabIndicatorColor(getResources().getColor(R.color.colorAdAvailable));
+	}
+
 	// ** Fragment navigation with page adapter helper methods**
 
 	public class SectionsPagerAdapter extends FragmentPagerAdapter {
@@ -169,21 +200,40 @@ public class MainActivity extends FragmentActivity {
 
 		@Override
 		public CharSequence getPageTitle(int position) {
-			return getSpannableString(position);
+			Drawable image;
+			image = getDrawableForPosition(position);
+			// changing the ad format icon's color according to ad availability
+			setDrawableColor(position, image);
+			//merging image with a SpannableString to allow custom title on a PageAdapter
+			image.setBounds(0, 0, image.getIntrinsicWidth(), image.getIntrinsicHeight());
+			ImageSpan imageSpan = new ImageSpan(image, ImageSpan.ALIGN_BOTTOM);
+			SpannableString spannableString = new SpannableString(" ");
+			spannableString.setSpan(imageSpan, 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+			return spannableString;
+
 		}
 
-		private SpannableString getSpannableString(int position) {
+		private void setDrawableColor(int position, Drawable image) {
+			if (getCurrentFragment(position) != null || position == OFFER_WALL_FRAGMENT) {
+				//Offer Wall is always ready to show ads
+				if (position == OFFER_WALL_FRAGMENT || getCurrentFragment(position).isReadyToShowAd()) {
+					image.setColorFilter(getOffersAvailableColorFilter());
+				} else {
+					//reset ad format icon's color when there are no offers available
+					image.setColorFilter(null);
+				}
+			}
+		}
+
+		private Drawable getDrawableForPosition(int position) {
 			Drawable image;
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
 				image = getDrawable(imageResId[position]);
 			} else {
 				image = getResources().getDrawable(imageResId[position]);
 			}
-			image.setBounds(0, 0, image.getIntrinsicWidth(), image.getIntrinsicHeight());
-			SpannableString spannableString = new SpannableString(" ");
-			ImageSpan imageSpan = new ImageSpan(image, ImageSpan.ALIGN_BOTTOM);
-			spannableString.setSpan(imageSpan, 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-			return spannableString;
+			return image;
 		}
 
 		private int[] imageResId = {
@@ -191,24 +241,37 @@ public class MainActivity extends FragmentActivity {
 				R.drawable.ic_action_icon_rewarded_video,
 				R.drawable.ic_action_icon_offerwall
 		};
+
+		// Helper methods to obtain current fragment being displayed on the viewPager
+
+		public FyberFragment getCurrentFragment(int position) {
+			String tag = getFragmentTag(position);
+			return (FyberFragment) getSupportFragmentManager().findFragmentByTag(tag);
+		}
+
+		private String getFragmentTag(int fragmentPosition) {
+			return "android:switcher:" + mViewPager.getId() + ":" + fragmentPosition;
+		}
+
+		// creating a ColorFilter based on the success color. This is needed due to the limitations of using a custom icon as a title in a PageAdapter
+		public ColorFilter getOffersAvailableColorFilter() {
+			int iColor = getResources().getColor(R.color.colorAdAvailable);//Color.parseColor("#FFB549");
+
+			int red = (iColor & 0xFF0000) / 0xFFFF;
+			int green = (iColor & 0xFF00) / 0xFF;
+			int blue = iColor & 0xFF;
+
+			float[] matrix = {0, 0, 0, 0, red
+					, 0, 0, 0, 0, green
+					, 0, 0, 0, 0, blue
+					, 0, 0, 0, 1, 0};
+
+			ColorFilter colorFilter = new ColorMatrixColorFilter(matrix);
+
+			return colorFilter;
+		}
 	}
 
-	// ** Init helper functions **
-
-	private void setupViewPager() {
-		// Create the adapter that will return a fragment for each of the three
-		// primary sections of the Activity.
-		mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
-		// Set up the ViewPager with the sections adapter.
-		mViewPager = (ViewPager) findViewById(R.id.pager);
-		mViewPager.setAdapter(mSectionsPagerAdapter);
-		mViewPager.setCurrentItem(1);
-	}
-
-	private void setupToolbar() {
-		toolbar.setTitle(getString(R.string.fyber_header));
-		toolbar.setLogo(R.drawable.ic_launcher);
-	}
 
 	// ** Animations **
 
@@ -228,6 +291,12 @@ public class MainActivity extends FragmentActivity {
 		animationSet.addAnimation(rotateAnimation);
 
 		return animationSet;
+	}
+
+	// ** exposing PageAdapter so that each Fragment can update the tile according to offer availability **
+
+	public FragmentPagerAdapter getViewPagerAdapter() {
+		return mSectionsPagerAdapter;
 	}
 
 }

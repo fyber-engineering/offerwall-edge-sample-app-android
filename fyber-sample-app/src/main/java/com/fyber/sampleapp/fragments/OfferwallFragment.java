@@ -104,4 +104,9 @@ public class OfferwallFragment extends FyberFragment {
 	protected void setButtonToOriginalState() {
 		//do nothing: there is only one state in Offer Wall
 	}
+
+	@Override
+	public boolean isReadyToShowAd() {
+		return true;
+	}
 }
